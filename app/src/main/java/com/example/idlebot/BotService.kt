@@ -17,13 +17,14 @@ import kotlin.coroutines.resume
 
 class BotService : AccessibilityService() {
 
-    // Screen positions are fractions of screen width/height.
-    private val MANAGE_OR_START = 0.50f to 0.843f
-    private val CONTINUE        = 0.55f to 0.955f
+    // ---- TUNE THESE (positions are fractions of screen width/height) ----
+    private val MANAGE_OR_START = 0.50f to 0.843f   // MANAGE button and calendar START share this spot
+    private val CONTINUE        = 0.55f to 0.955f   // "Continue" / "Tap to Continue" at the bottom
     private val AUTO_ASSIGN     = 0.26f to 0.958f
     private val LEVEL_START     = 0.74f to 0.958f
-    private val ANIMATION_MS    = 6000L
+    private val ANIMATION_MS    = 6000L   // manage animation
     private val MAX_ROUND_MS    = 10 * 60_000L
+    // ---------------------------------------------------------------------
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var job: Job? = null
@@ -55,8 +56,7 @@ class BotService : AccessibilityService() {
         } else {
             btn?.text = "STOP"
             job = scope.launch {
-                try { while (isActive) cycle() }
-                catch (e: CancellationException) { throw e }
+                try { while (isActive) cycle() } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { Log.e("IdleBot", "crashed", e) }
                 finally { withContext(NonCancellable + Dispatchers.Main) { btn?.text = "START" } }
             }
@@ -64,21 +64,21 @@ class BotService : AccessibilityService() {
     }
 
     private suspend fun cycle() {
-        tap(MANAGE_OR_START); delay(ANIMATION_MS)
-        tap(CONTINUE);        delay(2500)
-        tap(MANAGE_OR_START); delay(3000)
-        tap(AUTO_ASSIGN);     delay(1200)
-        tap(LEVEL_START);     delay(4000)
+        tap(MANAGE_OR_START); delay(ANIMATION_MS)      // manage + animation
+        tap(CONTINUE);        delay(2500)               // "You got" -> continue
+        tap(MANAGE_OR_START); delay(3000)               // calendar START
+        tap(AUTO_ASSIGN);     delay(1200)               // auto assign managers
+        tap(LEVEL_START);     delay(4000)               // start match-3 (auto mode)
         waitForVictory()
-        tap(CONTINUE);        delay(2500)
-        tap(CONTINUE);        delay(2500)
+        tap(CONTINUE);        delay(2500)               // victory -> continue
+        tap(CONTINUE);        delay(2500)               // chapter completed -> continue
     }
 
     private suspend fun waitForVictory() {
         val end = System.currentTimeMillis() + MAX_ROUND_MS
         var hits = 0
         while (System.currentTimeMillis() < end) {
-            delay(2000)
+            delay(2000)  // takeScreenshot is rate limited to ~1/sec
             val bmp = shot() ?: continue
             hits = if (isVictory(bmp)) hits + 1 else 0
             bmp.recycle()
@@ -86,6 +86,7 @@ class BotService : AccessibilityService() {
         }
     }
 
+    // VICTORY panel is a uniform dark-blue band; check 4 points on its left/right edges.
     private fun isVictory(b: Bitmap): Boolean {
         val pts = listOf(0.08f to 0.53f, 0.92f to 0.53f, 0.08f to 0.64f, 0.92f to 0.64f)
         return pts.all { (fx, fy) ->
